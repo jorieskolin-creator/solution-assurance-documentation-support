@@ -33,3 +33,17 @@ npm run preview
 ```
 
 The production output is written to `dist/`.
+
+## Deploy to Railway
+
+The workspace uses Node 24 (see `.nvmrc`) and Railway's default Railpack builder. No backend, database, environment variables or custom Node production server are required.
+
+1. In Railway, create a project and deploy from the GitHub repository `jorieskolin-creator/solution-assurance-documentation-support`.
+2. Open the service's **Settings** and set **Root Directory** to `/solution-assurance-documentation-workspace`. This is required because the repository also contains separate governance documents.
+3. Use **Railpack** as the builder. Leave custom build and start commands empty: Railpack detects Vite, installs dependencies, runs `npm run build`, and serves `dist/` as a static single-page application with Caddy.
+4. Set the deployment health-check path to `/`.
+5. Deploy the service and generate a domain under **Settings → Networking**.
+
+Do not use `npm run dev` or `npm run preview` as the Railway start command. A custom start command disables Railpack's automatic static-site serving.
+
+Railway hosting does not change the data boundary: records remain in each user's browser localStorage and are not stored by the Railway service.
