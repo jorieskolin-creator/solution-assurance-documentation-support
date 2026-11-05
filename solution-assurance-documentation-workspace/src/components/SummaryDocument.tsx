@@ -107,3 +107,4 @@ export function SummaryDocument({ record }: { record: Assessment }) {
     </article>
   )
 }
+
