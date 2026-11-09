@@ -1,0 +1,16 @@
+# Only the frontend source and container configuration belong in the build.
+**
+!Dockerfile
+!Caddyfile
+!solution-assurance-documentation-workspace/
+!solution-assurance-documentation-workspace/**
+
+**/node_modules
+**/dist
+**/dist-ssr
+**/.git
+**/.env
+**/.env.*
+**/*.local
+**/*.log
+**/*.tsbuildinfo
