@@ -25,7 +25,7 @@ server.once('error', () => stop(1))
 server.listen(3081, '127.0.0.1', () => {
   if (stopping) return
   caddy = spawn('/usr/bin/caddy', ['run', '--config', '/etc/caddy/Caddyfile', '--adapter', 'caddyfile'], {
-    // Caddy gets its listen port and writable directories, not the provider keys or access token.
+    // Caddy gets its listen port and writable directories, not the provider keys.
     env: {
       PORT: process.env.PORT || '8080',
       XDG_CONFIG_HOME: '/home/node/.config',

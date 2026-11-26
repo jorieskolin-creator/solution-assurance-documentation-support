@@ -5,8 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAiAssistServer } from '../server/aiAssist'
 import { AI_ASSIST_DRAFT_PATH, AI_ASSIST_STATUS_PATH } from '../src/lib/aiFailureModeAssist'
 
-const gate = 'a'.repeat(32)
-const env = { AI_ASSIST_ENABLED: 'true', AI_ASSIST_ACCESS_TOKEN: gate, GEMINI_API_KEY: 'gemini-fixture', XAI_API_KEY: 'xai-fixture' }
+const env = { GEMINI_API_KEY: 'fixture-google', XAI_API_KEY: 'fixture-xai' }
 const context = { capability: 'retrieval', outputUse: 'decision_support', humanReview: 'sampled' }
 const validBody = { consent: true, context }
 const ids = ['stale_information', 'weak_oversight']
@@ -26,9 +25,9 @@ async function start(options: NonNullable<Parameters<typeof createAiAssistServer
   return `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 }
 
-function post(base: string, body: unknown = validBody, accessToken = gate) {
+function post(base: string, body: unknown = validBody, headers: Record<string, string> = {}) {
   return fetch(base + AI_ASSIST_DRAFT_PATH, {
-    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+    method: 'POST', headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
   })
 }
@@ -42,9 +41,9 @@ const grokReply = (refusal: string | null = null) => Response.json({
 })
 
 describe('AI failure-mode service', () => {
-  it.each([{}, { ...env, AI_ASSIST_ENABLED: 'false' }, { ...env, AI_ASSIST_ACCESS_TOKEN: undefined },
-    { ...env, AI_ASSIST_ACCESS_TOKEN: 'short' }, { ...env, XAI_API_KEY: undefined },
-    { ...env, GEMINI_API_KEY: gate }])('fails closed on incomplete or disabled configuration', async (configuration) => {
+  it.each([{}, { GEMINI_API_KEY: env.GEMINI_API_KEY }, { XAI_API_KEY: env.XAI_API_KEY },
+    { ...env, GEMINI_API_KEY: '   ' }, { ...env, XAI_API_KEY: '' },
+  ])('fails closed when provider keys are missing or blank', async (configuration) => {
     const provider = vi.fn<typeof fetch>()
     const base = await start({ env: configuration, fetchProvider: provider })
     const status = await fetch(base + AI_ASSIST_STATUS_PATH)
@@ -54,19 +53,20 @@ describe('AI failure-mode service', () => {
     expect(provider).not.toHaveBeenCalled()
   })
 
-  it('rejects unauthorized, oversized and non-consenting or non-typed requests before provider use', async () => {
+  it('rejects cross-origin, oversized and non-consenting or non-typed requests before provider use', async () => {
     const provider = vi.fn<typeof fetch>()
     const base = await start({ env, fetchProvider: provider })
     expect(await (await fetch(base + AI_ASSIST_STATUS_PATH)).json()).toEqual({ enabled: true })
-    expect((await post(base, validBody, 'wrong')).status).toBe(401)
-    expect((await fetch(base + AI_ASSIST_DRAFT_PATH, { method: 'POST' })).status).toBe(401)
+    expect((await post(base, validBody, { 'sec-fetch-site': 'cross-site' })).status).toBe(403)
+    expect((await post(base, validBody, { origin: 'https://unrelated.example' })).status).toBe(403)
+    expect((await fetch(base + AI_ASSIST_DRAFT_PATH, { method: 'POST' })).status).toBe(415)
     expect((await post(base, { ...validBody, consent: false })).status).toBe(400)
     expect((await post(base, { ...validBody, context: { ...context, record: 'not permitted' } })).status).toBe(400)
     expect((await post(base, { ...validBody, context: { ...context, capability: 'custom' } })).status).toBe(400)
     expect((await post(base, { ...validBody, unexpected: 'x'.repeat(1024) })).status).toBe(413)
     const chunkedStatus = await new Promise<number | undefined>((resolve, reject) => {
       const req = httpRequest(base + AI_ASSIST_DRAFT_PATH, {
-        method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${gate}` },
+        method: 'POST', headers: { 'content-type': 'application/json' },
       }, (response) => {
         response.resume()
         resolve(response.statusCode)
@@ -79,10 +79,12 @@ describe('AI failure-mode service', () => {
     expect(provider).not.toHaveBeenCalled()
   })
 
-  it('sends only selected context, uses Gemini first and returns validated IDs with provider provenance', async () => {
+  it('enables both providers by default and calls Gemini only on a consenting request, without browser credentials', async () => {
     const provider = vi.fn<typeof fetch>().mockImplementation(async () => geminiGood())
     const base = await start({ env, fetchProvider: provider })
-    expect(await (await post(base)).json()).toEqual({ provider: 'google', model: 'gemini-4-hydrogen', suggestionIds: ids })
+    expect(await (await fetch(base + AI_ASSIST_STATUS_PATH)).json()).toEqual({ enabled: true })
+    expect(provider).not.toHaveBeenCalled()
+    expect(await (await post(base, validBody, { origin: base, 'sec-fetch-site': 'same-origin' })).json()).toEqual({ provider: 'google', model: 'gemini-4-hydrogen', suggestionIds: ids })
     expect(provider).toHaveBeenCalledTimes(1)
     const [url, init] = provider.mock.calls[0]
     expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-4-hydrogen:generateContent')
@@ -92,7 +94,6 @@ describe('AI failure-mode service', () => {
     const payload = JSON.parse(String(init?.body))
     expect(JSON.parse(payload.contents[0].parts[0].text).context).toEqual(context)
     expect(init?.redirect).toBe('manual')
-    expect(String(init?.body)).not.toContain(gate)
   })
 
   it('sends the same minimal context to Grok only after a recognized temporary error', async () => {
@@ -110,7 +111,6 @@ describe('AI failure-mode service', () => {
     const payload = JSON.parse(String(init?.body))
     expect(payload.model).toBe('grok-4.7')
     expect(JSON.parse(payload.messages[1].content).context).toEqual(context)
-    expect(String(init?.body)).not.toContain(gate)
   })
 
   it('uses the bounded fallback on a primary header timeout', async () => {
@@ -166,11 +166,30 @@ describe('AI failure-mode service', () => {
     expect(provider).toHaveBeenCalledTimes(2)
   })
 
-  it('limits paid requests per configured gate', async () => {
+  it('limits suggestion requests across all callers in the process', async () => {
     const provider = vi.fn<typeof fetch>().mockImplementation(async () => geminiGood())
     const base = await start({ env, fetchProvider: provider })
     for (let i = 0; i < 6; i++) expect((await post(base)).status).toBe(200)
     expect((await post(base)).status).toBe(429)
     expect(provider).toHaveBeenCalledTimes(6)
+  })
+
+  it('preserves the daily cap across minute windows', async () => {
+    const provider = vi.fn<typeof fetch>().mockImplementation(async () => geminiGood())
+    const base = await start({ env, fetchProvider: provider })
+    const now = Date.now()
+    try {
+      for (let minute = 0; minute < 10; minute++) {
+        vi.setSystemTime(now + minute * 60_000)
+        for (let count = 0; count < 6; count++) expect((await post(base)).status).toBe(200)
+      }
+      vi.setSystemTime(now + 10 * 60_000)
+      expect((await post(base)).status).toBe(429)
+      expect(provider).toHaveBeenCalledTimes(60)
+      vi.setSystemTime(now + 24 * 60 * 60_000)
+      expect((await post(base)).status).toBe(200)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

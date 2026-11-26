@@ -1,7 +1,6 @@
-import { createHash, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import {
-  AI_ASSIST_ACCESS_TOKEN_PATTERN, AI_ASSIST_DRAFT_PATH, AI_ASSIST_MODELS, AI_ASSIST_STATUS_PATH, AI_FAILURE_MODE_DRAFTS,
+  AI_ASSIST_DRAFT_PATH, AI_ASSIST_MODELS, AI_ASSIST_STATUS_PATH, AI_FAILURE_MODE_DRAFTS,
   isAiAssistRequest, parseAiSuggestionIds,
   type AiAssistContext, type AiAssistOrigin, type AiAssistResult,
 } from '../src/lib/aiFailureModeAssist.ts'
@@ -31,22 +30,24 @@ const selectionSchema = {
 type ProviderFetch = typeof fetch
 type ProviderResult = { kind: 'ok'; result: AiAssistResult } | { kind: 'unavailable' | 'retryable' | 'invalid' }
 
-function configuredAccess(env: NodeJS.ProcessEnv) {
-  const access = env.AI_ASSIST_ACCESS_TOKEN
+function configuredProviders(env: NodeJS.ProcessEnv) {
   const geminiKey = env.GEMINI_API_KEY?.trim()
   const xaiKey = env.XAI_API_KEY?.trim()
-  if (env.AI_ASSIST_ENABLED !== 'true' || !access || !AI_ASSIST_ACCESS_TOKEN_PATTERN.test(access)
-    || !geminiKey || !xaiKey || access === geminiKey || access === xaiKey) return null
-  return { accessHash: hash(access), geminiKey, xaiKey }
+  return geminiKey && xaiKey ? { geminiKey, xaiKey } : null
 }
 
-function hash(value: string) {
-  return createHash('sha256').update(value).digest()
-}
-
-function isAuthorized(request: IncomingMessage, accessHash: Buffer) {
-  const match = /^Bearer ([A-Za-z0-9_-]{32,128})$/.exec(request.headers.authorization ?? '')
-  return Boolean(match && timingSafeEqual(hash(match[1]), accessHash))
+function isCrossOrigin(request: IncomingMessage): boolean {
+  const fetchSite = request.headers['sec-fetch-site']
+  if (fetchSite === 'cross-site' || fetchSite === 'same-site') return true
+  const origin = request.headers.origin
+  if (!origin) return false
+  try {
+    const url = new URL(origin)
+    return url.host.toLowerCase() !== request.headers.host?.toLowerCase()
+      || (url.protocol !== 'https:' && url.protocol !== 'http:')
+  } catch {
+    return true
+  }
 }
 
 function send(response: ServerResponse, status: number, value: object, headers: Record<string, string> = {}) {
@@ -223,7 +224,7 @@ async function requestProvider(
 export function createAiAssistServer({
   env = process.env, fetchProvider = fetch, attemptTimeoutMs = PROVIDER_TIMEOUT_MS,
 }: { env?: NodeJS.ProcessEnv; fetchProvider?: ProviderFetch; attemptTimeoutMs?: number } = {}) {
-  const config = configuredAccess(env)
+  const config = configuredProviders(env)
   const attempts: number[] = []
   let inFlight = 0
   function budgetExhausted(now: number) {
@@ -239,9 +240,7 @@ export function createAiAssistServer({
     if (request.url !== AI_ASSIST_DRAFT_PATH) return send(response, 404, { error: 'not_found' })
     if (request.method !== 'POST') return send(response, 405, { error: 'method_not_allowed' }, { allow: 'POST' })
     if (!config) return send(response, 503, { error: 'disabled' })
-    if (request.headers['sec-fetch-site'] === 'cross-site' || !isAuthorized(request, config.accessHash)) {
-      return send(response, 401, { error: 'access_required' })
-    }
+    if (isCrossOrigin(request)) return send(response, 403, { error: 'cross_origin_request' })
     if (request.headers['content-type']?.toLowerCase().split(';')[0].trim() !== 'application/json'
       || request.headers['content-encoding'] !== undefined) return send(response, 415, { error: 'invalid_content_type' })
     if (Number(request.headers['content-length']) > MAX_REQUEST_BYTES) return send(response, 413, { error: 'request_too_large' })

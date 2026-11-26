@@ -3,10 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../src/App'
 import { createBlankAssessment, STORAGE_KEY } from '../src/lib/assessment'
 
-vi.mock('../src/lib/aiFailureModeClient', () => ({ getAiAssistAvailability: async () => false }))
-
 beforeEach(() => {
   vi.stubGlobal('scrollTo', vi.fn())
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockImplementation(async () => Response.json({ enabled: false })))
   localStorage.clear()
 })
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
@@ -62,5 +61,30 @@ describe('Step 02 failure modes', () => {
     click('View source')
     expect(within(screen.getByRole('dialog')).getByText('SRC-02:table-fm-row-1:L5')).toBeInTheDocument()
     expect(within(screen.getByRole('dialog')).getByText(row)).toBeInTheDocument()
+  })
+
+  it('offers AI automatically when configured, and persists only a reviewed draft', async () => {
+    const fetchMock = vi.mocked(fetch).mockResolvedValueOnce(Response.json({ enabled: true }))
+      .mockResolvedValueOnce(Response.json({ provider: 'google', model: 'gemini-4-hydrogen', suggestionIds: ['unsupported_output'] }))
+    render(<App />)
+    openImpact()
+    fireEvent.click(await screen.findByRole('button', { name: 'Draft suggestions with AI' }))
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/ai/status'])
+    const dialog = within(screen.getByRole('dialog'))
+    fireEvent.change(dialog.getByLabelText('Capability'), { target: { value: 'generation' } })
+    fireEvent.change(dialog.getByLabelText('Output use'), { target: { value: 'reference' } })
+    fireEvent.change(dialog.getByLabelText('Human review'), { target: { value: 'before_use' } })
+    expect(dialog.getByRole('button', { name: 'Request suggestions' })).toBeDisabled()
+    fireEvent.click(dialog.getByRole('checkbox', { name: /I agree to send/ }))
+    click('Request suggestions')
+    const suggestion = await dialog.findByRole('checkbox', { name: /Plausible but unsupported output/ })
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).failureModes).toEqual([])
+    fireEvent.click(suggestion)
+    click('Accept selected drafts')
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).failureModes).toEqual([expect.objectContaining({
+      severity_user: 'UNKNOWN', claimed_mitigations: [], provenance: expect.objectContaining({
+        ai_assistance: expect.objectContaining({ source: 'AI_ASSISTED', model: 'gemini-4-hydrogen' }),
+      }),
+    })])
   })
 })
