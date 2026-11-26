@@ -1,3 +1,5 @@
+import type { FailureModeEntry } from './failureMode'
+
 export type FieldType = 'text' | 'textarea' | 'select'
 
 export interface FieldOption {
@@ -57,6 +59,13 @@ export interface Confirmation {
   version: number
 }
 
+export interface FailureModeImportMetadata {
+  filePath: string
+  snapshotHash: string
+  importedAt: string
+  notices: string[]
+}
+
 export interface Assessment {
   schemaVersion: 'documentation-workspace-0.1'
   answers: Record<string, string>
@@ -64,6 +73,8 @@ export interface Assessment {
   notApplicable: Record<string, NotApplicableDetail>
   evidence: EvidenceItem[]
   dataSources: DataSourceItem[]
+  failureModes: FailureModeEntry[]
+  failureModeImport?: FailureModeImportMetadata | null
   confirmation: Confirmation | null
   version: number
   updatedAt: string

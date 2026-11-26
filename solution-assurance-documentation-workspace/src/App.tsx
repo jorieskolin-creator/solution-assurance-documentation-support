@@ -6,6 +6,13 @@ import {
 } from 'lucide-react'
 import './App.css'
 import { QuestionField } from './components/QuestionField'
+import { FailureModeRegister } from './components/FailureModeRegister'
+import { AiFailureModeAssist } from './components/AiFailureModeAssist'
+import { failureModeGuidance, type GuidanceTargetId } from './data/failureModeGuidance'
+import { getAiAssistAvailability } from './lib/aiFailureModeClient'
+import type { AcceptedAiFailureModeDraft } from './lib/aiFailureModeAssist'
+import { validateFailureModeRegister, type OutstandingWorkTarget } from './lib/failureModeValidation'
+import { nextCustomFailureModeId, type FailureModeEntry } from './types/failureMode'
 import { SummaryDocument } from './components/SummaryDocument'
 import { evidenceBasisLabels, lifecycleLabels, sections, verificationLabels } from './data/sections'
 import {
@@ -40,14 +47,35 @@ export default function App() {
   const [saveState, setSaveState] = useState('Saved in this browser')
   const [notice, setNotice] = useState('')
   const [resetOpen, setResetOpen] = useState(false)
+  const [expandedFailureMode, setExpandedFailureMode] = useState<string | null>(null)
+  const [failureModeFocus, setFailureModeFocus] = useState<OutstandingWorkTarget | null>(null)
+  const [guidanceTarget, setGuidanceTarget] = useState<GuidanceTargetId>('failureModes')
+  const [aiAvailable, setAiAvailable] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
 
+  const failureModeValidation = useMemo(() => validateFailureModeRegister(record.failureModes), [record.failureModes])
   const stats = useMemo(() => overallStats(record), [record])
   const unresolvedRefs = useMemo(() => unresolvedEvidenceRefs(record), [record])
   const knownEvidenceIds = useMemo(() => new Set(record.evidence.map((item) => item.id)), [record.evidence])
   const currentIndex = steps.findIndex((step) => step.id === activeStep)
   const currentSection = sections.find((section) => section.id === activeStep)
   const solutionName = record.answers.solutionName?.trim() || 'Untitled solution'
-  const canConfirm = Boolean(record.answers.solutionName?.trim() && record.answers.recordOwner?.trim() && record.answers.lifecycleStage && reviewChecked)
+  const canConfirm = Boolean(record.answers.solutionName?.trim() && record.answers.recordOwner?.trim() && record.answers.lifecycleStage && reviewChecked && failureModeValidation.canExportHandoff)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void getAiAssistAvailability(controller.signal).then((available) => {
+      if (!controller.signal.aborted) setAiAvailable(available)
+    })
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    if (activeStep !== 'impact' || !failureModeFocus) return
+    const element = document.getElementById(failureModeFocus.rowId ? `fm-row-${failureModeFocus.rowId}` : 'failure-mode-register-heading')
+    element?.focus()
+    element?.scrollIntoView?.({ block: 'center' })
+  }, [activeStep, failureModeFocus])
 
   useEffect(() => {
     let saved = true
@@ -116,6 +144,35 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  function navigateToFailureMode(target: OutstandingWorkTarget) {
+    setExpandedFailureMode(target.rowId ?? null)
+    setFailureModeFocus({ ...target })
+    setActiveStep('impact')
+  }
+
+  function acceptAiDrafts(drafts: readonly AcceptedAiFailureModeDraft[]) {
+    const entries = [...record.failureModes]
+    for (const draft of drafts) {
+      const id = nextCustomFailureModeId(entries)
+      if (!id) {
+        setNotice('No custom failure mode IDs are available. Remove an unused row before adding suggestions.')
+        return
+      }
+      const { provenance, ...fields } = draft
+      const entry: FailureModeEntry = {
+        ...fields, id, source: 'USER_DECLARED', archetype_id: null,
+        severity_user: 'UNKNOWN', occurrence_inherent: 'UNKNOWN', detectability_inherent: 'UNKNOWN',
+        mapped_objects: [], claimed_mitigations: [],
+        provenance: { basis: 'MANUAL_USER_DECLARATION', source_unit_ids: [], limitations: ['Human-accepted AI draft; ratings, controls and evidence were not inferred.'], ai_assistance: provenance },
+      }
+      entries.push(entry)
+    }
+    setReviewChecked(false)
+    setRecord((previous) => updateRecord(previous, { failureModes: entries }))
+    setExpandedFailureMode(entries[record.failureModes.length]?.id ?? null)
+    setNotice(`Added ${drafts.length} reviewed AI suggestions as draft declarations.`)
+  }
+
   function confirmDocumentation() {
     if (!canConfirm) return
     const confirmedAt = new Date().toISOString()
@@ -129,28 +186,34 @@ export default function App() {
     setNotice('Documentation snapshot confirmed. This is not an approval.')
   }
 
-  async function downloadSummary() {
+  async function downloadSummary(format: 'html' | 'json') {
     try {
-      const { createStandaloneSummary } = await import('./lib/exportSummary')
-      const html = createStandaloneSummary(record)
-      const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+      const { createSummaryExports } = await import('./lib/exportSummary')
+      const { html, handoffJson } = await createSummaryExports(record)
+      if (format === 'json' && handoffJson === null) {
+        setNotice('Resolve compilation blockers in Outstanding Work before exporting the handoff.')
+        return
+      }
+      const blob = new Blob([format === 'json' ? handoffJson ?? '' : html], { type: format === 'json' ? 'application/json' : 'text/html;charset=utf-8' })
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       const safeName = solutionName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled-solution'
       anchor.href = url
-      anchor.download = `${safeName}-assessment-record.html`
+      anchor.download = `${safeName}-${format === 'json' ? 'doc-support-handoff.json' : 'assessment-record.html'}`
       document.body.appendChild(anchor)
       anchor.click()
       anchor.remove()
       window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-      setNotice('Standalone HTML summary downloaded.')
+      setNotice(format === 'json' ? 'Handoff JSON downloaded.' : handoffJson ? 'HTML summary with embedded handoff downloaded.' : 'Printable HTML downloaded without a machine handoff due to compilation blockers.')
     } catch {
-      setNotice('HTML export could not be created. Use Print / Save as PDF instead.')
+      setNotice('Export could not be created. Use Print / Save as PDF instead.')
     }
   }
 
   function startBlank() {
     setRecord(createBlankAssessment())
+    setExpandedFailureMode(null)
+    setFailureModeFocus(null)
     setReviewChecked(false)
     setResetOpen(false)
     setActiveStep('setup')
@@ -224,7 +287,7 @@ export default function App() {
             <p>Requirements & validation</p>
             <p>Operation & reassessment</p>
           </div>
-          <div className="local-notice"><Info size={15} aria-hidden="true" /><p>This draft stores data only in this browser. Clearing browser data removes it. No content is sent to Saidot, the Engine or an AI service.</p></div>
+          <div className="local-notice"><Info size={15} aria-hidden="true" /><p>Drafts stay in this browser. Clearing browser data removes them. Only the optional AI step sends selected categories to external providers, after your consent.</p></div>
         </aside>
 
         <main className="main-content" id="main-content">
@@ -252,6 +315,20 @@ export default function App() {
                   />
                 ))}
               </div>
+              {currentSection.id === 'impact' && (
+                <FailureModeRegister
+                  entries={record.failureModes}
+                  expandedRowId={expandedFailureMode}
+                  onExpandedRowChange={setExpandedFailureMode}
+                  onChangeEntries={(failureModes, failureModeImport) => {
+                    setReviewChecked(false)
+                    setRecord((previous) => updateRecord(previous, { failureModes, ...(failureModeImport ? { failureModeImport } : {}) }))
+                  }}
+                  onFocusGuidance={setGuidanceTarget}
+                  onNotify={setNotice}
+                  onOpenAiAssist={aiAvailable ? () => setAiOpen(true) : undefined}
+                />
+              )}
               {currentSection.id === 'permission' && (
                 <section className="register-section no-print" aria-labelledby="data-source-heading">
                   <div className="register-heading">
@@ -359,9 +436,10 @@ export default function App() {
               </section>
               <section className="rail-section export-actions">
                 <div className="mono-label">Governance artefact</div>
-                <button type="button" className="button button-primary full-button" onClick={downloadSummary}><Download size={16} aria-hidden="true" />Download HTML summary</button>
+                <button type="button" className="button button-primary full-button" onClick={() => void downloadSummary('html')}><Download size={16} aria-hidden="true" />Download HTML summary</button>
+                <button type="button" className="button button-secondary full-button" disabled={!failureModeValidation.canExportHandoff} onClick={() => void downloadSummary('json')}>Download handoff JSON</button>
                 <button type="button" className="button button-secondary full-button" onClick={() => window.print()}><Printer size={16} aria-hidden="true" />Print / Save as PDF</button>
-                <p>Use the browser’s print dialogue and choose “Save as PDF”. The HTML file is standalone and contains no scripts.</p>
+                <p>The standalone HTML contains no executable scripts. Fix compilation blockers to include the embedded handoff or download it separately.</p>
               </section>
               <section className="rail-section future-note"><div className="mono-label">Not in this draft</div><p>Clarity scoring, gate-depth analysis, remediation proposals, automated classification and direct Saidot/Engine integration remain later functions.</p></section>
             </>
@@ -383,10 +461,45 @@ export default function App() {
               <section className="rail-section last-updated"><div className="mono-label">Last local update</div><p>{displayDate(record.updatedAt)}</p></section>
             </>
           )}
+          {activeStep === 'impact' && <FailureModeGuidancePanel target={guidanceTarget} />}
+          {(activeStep === 'impact' || activeStep === 'review') && (
+            <section className="rail-section" aria-labelledby="outstanding-work-heading">
+              <h2 id="outstanding-work-heading">Outstanding Work</h2>
+              {failureModeValidation.findings.length === 0 ? <p>No open failure mode items.</p> : (
+                <ul className="fm-outstanding">
+                  {failureModeValidation.findings.map((finding) => (
+                    <li key={finding.id}>
+                      <button type="button" className="text-button" onClick={() => navigateToFailureMode(finding.target)}>{finding.title}</button>
+                      <p>{finding.kind === 'COMPILATION_BLOCKER' ? 'Compilation blocker' : 'Open gap'} · {finding.code}</p>
+                      <p>{finding.permittedNextAction}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
         </aside>
       </div>
 
+      {aiAvailable && <AiFailureModeAssist open={aiOpen} onOpenChange={setAiOpen} onAccept={acceptAiDrafts} />}
       {notice && <div className="toast no-print" role="status">{notice}</div>}
     </div>
+  )
+}
+
+function FailureModeGuidancePanel({ target }: { target: GuidanceTargetId }) {
+  const { title, detailedQuestions: detail } = failureModeGuidance[target]
+  return (
+    <section className="rail-section" aria-label="Failure mode field guidance">
+      <div className="mono-label">Field guidance</div>
+      <h2>{title}</h2>
+      <dl className="fm-guidance">
+        <dt>What should I record?</dt><dd>{detail.whatToRecord}</dd>
+        <dt>How do I choose a level?</dt><dd><ul>{detail.anchoredLevels.map((level) => <li key={level}>{level}</li>)}</ul></dd>
+        <dt>Why no risk priority number?</dt><dd>{detail.whyNoRpn}</dd>
+        <dt>What does this establish?</dt><dd>{detail.provenanceBoundary}</dd>
+        <dt>What should I avoid?</dt><dd>{detail.commonMistake}</dd>
+      </dl>
+    </section>
   )
 }

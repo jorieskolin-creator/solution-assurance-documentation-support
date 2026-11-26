@@ -1,5 +1,7 @@
 import { evidenceBasisLabels, lifecycleLabels, sections, verificationLabels } from '../data/sections'
 import { displayDate, overallStats, valueLabel } from '../lib/assessment'
+import { DOCUMENTATION_BOUNDARY, prepareSummaryExport, type PreparedSummary } from '../lib/docSupportHandoff'
+import type { RepositorySnapshotManifest } from '../lib/failureModeMarkdown'
 import type { Assessment } from '../types/assessment'
 
 function FieldValue({ record, fieldId, label }: { record: Assessment; fieldId: string; label: string }) {
@@ -22,7 +24,12 @@ function FieldValue({ record, fieldId, label }: { record: Assessment; fieldId: s
   )
 }
 
-export function SummaryDocument({ record }: { record: Assessment }) {
+export function SummaryDocument({ record, manifest }: { record: Assessment; manifest?: RepositorySnapshotManifest }) {
+  return <PreparedSummaryDocument summary={prepareSummaryExport(record, manifest)} />
+}
+
+export function PreparedSummaryDocument({ summary }: { summary: PreparedSummary }) {
+  const { record, validation } = summary
   const stats = overallStats(record)
   const solutionName = record.answers.solutionName?.trim() || 'Untitled solution'
   return (
@@ -37,7 +44,7 @@ export function SummaryDocument({ record }: { record: Assessment }) {
             {record.confirmation ? `Confirmed documentation · v${record.confirmation.version}` : 'Draft · unconfirmed'}
           </span>
         </div>
-        <p className="summary-boundary">This record documents information available at the time of completion. It is not an approval, legal conclusion, risk acceptance, gate decision or assurance finding.</p>
+        <p className="summary-boundary">{DOCUMENTATION_BOUNDARY}</p>
       </header>
 
       <section className="summary-section">
@@ -64,6 +71,58 @@ export function SummaryDocument({ record }: { record: Assessment }) {
           </div>
         </section>
       ))}
+
+      <section className="summary-section" aria-labelledby="summary-failure-modes">
+        <div className="summary-section-number">02 · Risk and impact (continued)</div>
+        <h3 id="summary-failure-modes">Failure Mode Register</h3>
+        <p className="summary-section-description">Declared failure modes, claimed mitigations and evidence status. These are not assurance findings.</p>
+        {record.failureModeImport && (
+          <dl className="summary-register-grid">
+            <div><dt>Imported from</dt><dd>{record.failureModeImport.filePath || 'Not recorded'}</dd></div>
+            <div><dt>Snapshot hash</dt><dd>{record.failureModeImport.snapshotHash || 'Not recorded'}</dd></div>
+            <div><dt>Imported at</dt><dd>{displayDate(record.failureModeImport.importedAt)}</dd></div>
+            <div><dt>Import notices</dt><dd>{record.failureModeImport.notices.join(', ') || 'None'}</dd></div>
+          </dl>
+        )}
+        {record.failureModes.length === 0 ? (
+          <p className="summary-missing">{validation.canExportHandoff ? 'No failure modes registered.' : 'No valid failure mode rows to display.'}</p>
+        ) : record.failureModes.map((row, index) => (
+          <div className="summary-register-item" data-failure-mode-id={row.id} key={`${row.id}-${index}`}>
+            <h4>{row.id} · {row.title || 'Untitled failure mode'}</h4>
+            <dl className="summary-register-grid">
+              <div><dt>Trigger / cause</dt><dd>{row.trigger_or_cause || 'Not provided'}</dd></div>
+              <div><dt>Effect</dt><dd>{row.effect_summary || 'Not provided'}</dd></div>
+              <div><dt>Severity</dt><dd>{row.severity_user}</dd></div>
+              <div><dt>Inherent occurrence</dt><dd>{row.occurrence_inherent}</dd></div>
+              <div><dt>Inherent detectability</dt><dd>{row.detectability_inherent}</dd></div>
+              <div><dt>Mapped controls</dt><dd>{row.mapped_objects.join(', ') || 'None'}</dd></div>
+              <div><dt>Source / archetype</dt><dd>{row.source} · {row.archetype_id || 'Custom'}</dd></div>
+              {row.provenance.ai_assistance && <div><dt>AI assistance (human accepted)</dt><dd>{row.provenance.ai_assistance.model} · {row.provenance.ai_assistance.suggestionId} · {row.provenance.ai_assistance.acceptedAt}</dd></div>}
+              <div><dt>Provenance basis</dt><dd>{row.provenance.basis}</dd></div>
+              <div><dt>Source units</dt><dd>{row.provenance.source_unit_ids.join(', ') || 'None'}</dd></div>
+              <div><dt>Source file</dt><dd>{row.provenance.file_path || 'Not recorded'}</dd></div>
+              <div><dt>Snapshot hash</dt><dd>{row.provenance.snapshot_hash || 'Not recorded'}</dd></div>
+              <div><dt>Limitations</dt><dd>{row.provenance.limitations.join('\n') || 'None recorded'}</dd></div>
+            </dl>
+            <h5>Claimed mitigations</h5>
+            {row.claimed_mitigations.length === 0 ? <p className="summary-missing">No mitigations declared.</p> : row.claimed_mitigations.map((mitigation, i) => (
+              <dl className="summary-register-grid" key={i}>
+                <div><dt>Control / type</dt><dd>{mitigation.control || 'Unnamed control'} · {mitigation.type}</dd></div>
+                <div><dt>Evidence status</dt><dd>{mitigation.evidence_status_observed}</dd></div>
+                <div><dt>Code reference</dt><dd>{mitigation.code_ref || 'Not recorded'}</dd></div>
+                <div><dt>Evidence reference</dt><dd>{mitigation.evidence_ref || 'Not recorded'}</dd></div>
+              </dl>
+            ))}
+          </div>
+        ))}
+        <h4>Outstanding failure mode work</h4>
+        {!validation.canExportHandoff && <p>Machine handoff blocked. The printable record is still available.</p>}
+        {validation.findings.length === 0 ? <p>No failure mode gaps recorded.</p> : (
+          <ul>{validation.findings.map((finding) => (
+            <li key={finding.id}><strong>{finding.title}</strong> ({finding.code}): {finding.message} {finding.permittedNextAction}</li>
+          ))}</ul>
+        )}
+      </section>
 
       <section className="summary-section">
         <h3>Data source register</h3>

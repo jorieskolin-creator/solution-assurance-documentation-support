@@ -1,5 +1,6 @@
 import { documentationFields, sections } from '../data/sections'
 import type { Assessment, DataSourceItem, EvidenceItem } from '../types/assessment'
+import { failureModeEntrySchema } from '../types/failureMode'
 
 export const STORAGE_KEY = 'solution-assurance-documentation-workspace-v01'
 
@@ -11,6 +12,8 @@ export function createBlankAssessment(): Assessment {
     notApplicable: {},
     evidence: [],
     dataSources: [],
+    failureModes: [],
+    failureModeImport: null,
     confirmation: null,
     version: 0,
     updatedAt: new Date().toISOString(),
@@ -25,11 +28,16 @@ export function loadAssessment(): Assessment {
     if (parsed.schemaVersion !== 'documentation-workspace-0.1' || !parsed.answers || !Array.isArray(parsed.evidence) || !Array.isArray(parsed.dataSources)) {
       return createBlankAssessment()
     }
+    const failureModes = Array.isArray(parsed.failureModes) ? parsed.failureModes : []
     return {
       ...createBlankAssessment(),
       ...parsed,
       evidenceRefs: parsed.evidenceRefs ?? {},
       notApplicable: parsed.notApplicable ?? {},
+      failureModes,
+      // A malformed persisted row requires a fresh human review, never silent approval.
+      confirmation: failureModes.some((row) => !failureModeEntrySchema.safeParse(row).success) ? null : parsed.confirmation,
+      failureModeImport: parsed.failureModeImport ?? null,
     }
   } catch {
     return createBlankAssessment()
