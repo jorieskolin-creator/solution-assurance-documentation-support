@@ -17,12 +17,12 @@ export async function getAiAssistAvailability(signal?: AbortSignal): Promise<boo
 }
 
 export async function requestAiFailureModeDrafts(
-  context: AiAssistContext, accessToken: string, signal: AbortSignal,
+  context: AiAssistContext, signal: AbortSignal,
 ): Promise<AiAssistResult | null> {
   try {
     const response = await fetch(AI_ASSIST_DRAFT_PATH, {
       method: 'POST', mode: 'same-origin', credentials: 'omit', redirect: 'error', cache: 'no-store',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ consent: true, context }),
       signal: AbortSignal.any([signal, AbortSignal.timeout(16_000)]),
     })
