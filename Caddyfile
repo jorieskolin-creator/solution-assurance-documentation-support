@@ -1,11 +1,29 @@
 {
 	admin off
 	auto_https off
+	log {
+		output discard
+	}
 }
 
 :{$PORT:8080} {
-	root * /srv
-	encode zstd gzip
-	try_files {path} /index.html
-	file_server
+	@ai path /api/ai /api/ai/*
+	handle @ai {
+		request_body {
+			max_size 1024
+		}
+		reverse_proxy 127.0.0.1:3081 {
+			transport http {
+				dial_timeout 2s
+				response_header_timeout 15s
+			}
+		}
+	}
+
+	handle {
+		root * /srv
+		encode zstd gzip
+		try_files {path} /index.html
+		file_server
+	}
 }

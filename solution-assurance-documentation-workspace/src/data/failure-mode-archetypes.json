@@ -1,0 +1,122 @@
+[
+  {
+    "id": "FM-01",
+    "title": "Scope Creep / Out-of-Bounds Use",
+    "group": "A · Generate & Purpose Boundaries",
+    "default_mapped_objects": ["A1", "A4", "AP-A1", "AP-A4"],
+    "recommended_mitigation_type": "PREVENTIVE",
+    "guidance_hint": "Define enforced domain boundaries, role gating, and explicit out-of-scope refusals rather than relying on user discipline."
+  },
+  {
+    "id": "FM-02",
+    "title": "Prototype-to-Production Bleed",
+    "group": "A · Generate & Purpose Boundaries",
+    "default_mapped_objects": ["A5", "D1", "AP-A5", "AP-D1"],
+    "recommended_mitigation_type": "PREVENTIVE",
+    "guidance_hint": "Prevent experimental prompts, mock credentials, or unvalidated prototype workflows from entering production paths."
+  },
+  {
+    "id": "FM-03",
+    "title": "Unauthorized Data Leakage / Cross-Tenant Exposure",
+    "group": "B · Ground & Data Protection",
+    "default_mapped_objects": ["B4", "D1", "AP-B4", "AP-D1"],
+    "recommended_mitigation_type": "PREVENTIVE",
+    "guidance_hint": "Enforce tenant/RBAC filtering before retrieval and redact sensitive data before prompts or logs leave the boundary."
+  },
+  {
+    "id": "FM-04",
+    "title": "Unlawful Processing or Incomplete Deletion",
+    "group": "B · Ground & Data Protection",
+    "default_mapped_objects": ["B1", "B2", "B3", "AP-B1", "AP-B2", "AP-B3"],
+    "recommended_mitigation_type": "PREVENTIVE",
+    "guidance_hint": "Verify lawful basis, minimisation, and propagation of retention/deletion across caches, indexes, and logs."
+  },
+  {
+    "id": "FM-05",
+    "title": "IP / Licensing Infringement or Ownership Conflict",
+    "group": "B · Ground & Data Protection",
+    "default_mapped_objects": ["B5", "AP-B5"],
+    "recommended_mitigation_type": "PREVENTIVE",
+    "guidance_hint": "Check corpus licensing, customer ownership commitments, and output attribution/reuse restrictions."
+  },
+  {
+    "id": "FM-06",
+    "title": "Fabrication / Unsupported Consequential Output",
+    "group": "D · Reliability & Truthfulness",
+    "default_mapped_objects": ["D2", "F2", "AP-D2", "AP-F2"],
+    "recommended_mitigation_type": "DETECTIVE",
+    "guidance_hint": "Require grounding citations, abstention thresholds, or deterministic verification before outputs inform consequential steps."
+  },
+  {
+    "id": "FM-07",
+    "title": "Prompt Injection / Untrusted Instruction Hijack",
+    "group": "D · Reliability & Truthfulness",
+    "default_mapped_objects": ["D3", "AP-D3"],
+    "recommended_mitigation_type": "PREVENTIVE",
+    "guidance_hint": "Treat retrieved/user text as untrusted data; separate system instructions from data and enforce deterministic output/tool constraints."
+  },
+  {
+    "id": "FM-08",
+    "title": "Unauthorized Tool Execution / Runaway Write Action",
+    "group": "C · Govern & Execution Control",
+    "default_mapped_objects": ["C3", "D1", "AP-C3", "AP-D1"],
+    "recommended_mitigation_type": "PREVENTIVE",
+    "guidance_hint": "Constrain tool permissions to least privilege, validate arguments deterministically, and gate state-changing writes."
+  },
+  {
+    "id": "FM-09",
+    "title": "Fail-Open Under Component or Control Failure",
+    "group": "D · Reliability & Truthfulness",
+    "default_mapped_objects": ["D5", "AP-D5"],
+    "recommended_mitigation_type": "PREVENTIVE",
+    "guidance_hint": "Specify fail-closed or safe degraded behavior when guardrails, filters, or upstream dependencies time out or error."
+  },
+  {
+    "id": "FM-10",
+    "title": "Vendor / Third-Party Contract & Data-Boundary Breach",
+    "group": "C · Govern & Execution Control",
+    "default_mapped_objects": ["C1", "C2", "C4", "AP-C1", "AP-C4"],
+    "recommended_mitigation_type": "PREVENTIVE",
+    "guidance_hint": "Ensure third-party model endpoints, retention settings, zero-data-retention terms, and regional processing match commitments."
+  },
+  {
+    "id": "FM-11",
+    "title": "Rubber-Stamp Oversight / Automation Bias",
+    "group": "E · Affected People & Oversight",
+    "default_mapped_objects": ["E4", "F4", "AP-E4", "AP-F4"],
+    "recommended_mitigation_type": "DETECTIVE",
+    "guidance_hint": "Design human review with meaningful evidence, override authority, time to inspect, and monitoring against blind acceptance."
+  },
+  {
+    "id": "FM-12",
+    "title": "Disparate Harm / Unfair Outcomes on Affected People",
+    "group": "E · Affected People & Oversight",
+    "default_mapped_objects": ["E1", "E2", "AP-E1", "AP-E2"],
+    "recommended_mitigation_type": "DETECTIVE",
+    "guidance_hint": "Assess subgroup error/disparity risks and test representative cohorts rather than assuming uniform accuracy."
+  },
+  {
+    "id": "FM-13",
+    "title": "Opaque Output & Lack of Practical Recourse",
+    "group": "E · Affected People & Oversight",
+    "default_mapped_objects": ["E3", "E5", "AP-E3", "AP-E5"],
+    "recommended_mitigation_type": "DETECTIVE",
+    "guidance_hint": "Provide intelligible rationale and an accessible human escalation/correction channel for affected parties."
+  },
+  {
+    "id": "FM-14",
+    "title": "Unreconstructable Decisions / Opaque Execution",
+    "group": "C · Govern & Execution Control",
+    "default_mapped_objects": ["C1", "D4", "AP-C1", "AP-D4"],
+    "recommended_mitigation_type": "DETECTIVE",
+    "guidance_hint": "Log decision inputs, model/prompt versions, policy checks, and human overrides cleanly without leaking restricted payloads."
+  },
+  {
+    "id": "FM-15",
+    "title": "Silent Supply-Chain Drift & Unmonitored Degradation",
+    "group": "C · Govern & Execution Control",
+    "default_mapped_objects": ["C5", "F3", "F5", "AP-C5", "AP-F3", "AP-F5"],
+    "recommended_mitigation_type": "DETECTIVE",
+    "guidance_hint": "Pin versions or monitor model, prompt, index, and dependency drift with regression thresholds and alert triggers."
+  }
+]

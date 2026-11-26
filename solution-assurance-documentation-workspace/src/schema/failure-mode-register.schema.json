@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://solution-assurance.local/schemas/failure-mode-register/1.0.0",
+  "title": "Failure Mode Register",
+  "description": "Shared contract failure-mode-register/1.0.0 for Evidence-Gated FMEA in Solution Assurance Documentation Support. Anchored S/O/D only; no RPN numeric multiplication.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "entries"],
+  "properties": {
+    "schema_version": {
+      "const": "failure-mode-register/1.0.0"
+    },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/FailureModeEntry" }
+    },
+    "validation_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total_entries", "archetype_entries", "custom_entries", "open_warnings"],
+      "properties": {
+        "total_entries": { "type": "integer", "minimum": 0 },
+        "archetype_entries": { "type": "integer", "minimum": 0 },
+        "custom_entries": { "type": "integer", "minimum": 0 },
+        "open_warnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "blockers": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "ArchetypeId": {
+      "type": "string",
+      "pattern": "^FM-(0[1-9]|1[0-5])$"
+    },
+    "FailureModeId": {
+      "type": "string",
+      "pattern": "^(FM-(0[1-9]|1[0-5])|FM-CUSTOM-[0-9]{2,3})$"
+    },
+    "ControlObjectId": {
+      "type": "string",
+      "pattern": "^(AP-)?[A-F][1-5]$"
+    },
+    "ClaimedMitigation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["control", "type", "evidence_status_observed"],
+      "properties": {
+        "control": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["PREVENTIVE", "DETECTIVE", "PROCEDURAL_OR_PROMPT_ONLY", "UNKNOWN"]
+        },
+        "code_ref": { "type": ["string", "null"] },
+        "evidence_ref": { "type": ["string", "null"] },
+        "evidence_status_observed": {
+          "type": "string",
+          "enum": [
+            "DECLARED_IN_DOC",
+            "OBSERVED_IN_CONFIG",
+            "TEST_EVIDENCE_LINKED",
+            "NOT_RUN",
+            "MISSING_UNKNOWN"
+          ]
+        }
+      }
+    },
+    "Provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis", "source_unit_ids", "limitations"],
+      "properties": {
+        "basis": {
+          "type": "string",
+          "enum": ["DOCUMENT_DECLARATION", "MANUAL_USER_DECLARATION"]
+        },
+        "source_unit_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "file_path": { "type": ["string", "null"] },
+        "snapshot_hash": { "type": ["string", "null"] },
+        "excerpt": { "type": ["string", "null"] },
+        "ai_assistance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "provider", "model", "suggestionId", "acceptedAt"],
+          "properties": {
+            "source": { "const": "AI_ASSISTED" },
+            "provider": { "enum": ["google", "xai"] },
+            "model": { "enum": ["gemini-4-hydrogen", "grok-4.7"] },
+            "suggestionId": { "enum": ["scope_creep", "unsupported_output", "stale_information", "inconsistent_classification", "weak_oversight", "lost_context", "workflow_mismatch", "availability_gap"] },
+            "acceptedAt": { "type": "string", "format": "date-time" }
+          },
+          "if": { "properties": { "provider": { "const": "google" } } },
+          "then": { "properties": { "model": { "const": "gemini-4-hydrogen" } } },
+          "else": { "properties": { "model": { "const": "grok-4.7" } } }
+        }
+      }
+    },
+    "FailureModeEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "archetype_id",
+        "source",
+        "title",
+        "trigger_or_cause",
+        "effect_summary",
+        "severity_user",
+        "occurrence_inherent",
+        "detectability_inherent",
+        "mapped_objects",
+        "claimed_mitigations",
+        "provenance"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/FailureModeId" },
+        "archetype_id": {
+          "oneOf": [
+            { "$ref": "#/$defs/ArchetypeId" },
+            { "type": "null" }
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": ["USER_DECLARED", "DOCUMENT_EXTRACTED"]
+        },
+        "title": { "type": "string" },
+        "trigger_or_cause": { "type": "string" },
+        "effect_summary": { "type": "string" },
+        "severity_user": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL", "UNKNOWN"]
+        },
+        "occurrence_inherent": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH", "UNKNOWN"]
+        },
+        "detectability_inherent": {
+          "type": "string",
+          "enum": ["HIGH", "MEDIUM", "LOW", "UNKNOWN"]
+        },
+        "mapped_objects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ControlObjectId" }
+        },
+        "claimed_mitigations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ClaimedMitigation" }
+        },
+        "provenance": { "$ref": "#/$defs/Provenance" }
+      }
+    }
+  }
+}
