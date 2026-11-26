@@ -68,12 +68,10 @@ docker run --rm -p 8080:8080 -e PORT=8080 solution-assurance-documentation-works
 
 If an earlier deployment reports `Railpack could not determine how to build the app`, redeploy the latest commit containing the root Dockerfile. That failure happened because Railpack inspected the repository root while the Node application was in a subdirectory.
 
-### Optional: enable AI-assisted drafting
+### AI-assisted drafting
 
-AI is off by default. To enable it, configure the following Railway **runtime** variables on the workspace service:
+AI drafting is available by default when `GEMINI_API_KEY` and `XAI_API_KEY` are set as Railway **runtime** variables. No enable flag, separate access token, or user-entered credential is needed. If either key is absent, only the manual workflow is available. Keep the keys on the server.
 
-- `AI_ASSIST_ENABLED=true`
-- `GEMINI_API_KEY` and `XAI_API_KEY`
-- `AI_ASSIST_ACCESS_TOKEN`: a separate random secret of 32–128 letters, digits, underscores or hyphens, shared securely with authorized reviewers only. Rotate it to revoke access. Never share either provider key with reviewers.
+No model is called until a user chooses three categories and consents. Gemini (`gemini-4-hydrogen`) ranks vetted draft candidates; Grok (`grok-4.7`) is attempted only when Gemini is temporarily unavailable. The user reviews and explicitly accepts each draft. The models do not assign severity, provide evidence, or edit the record directly. Accepted suggestions retain their model provenance.
 
-After a user consents, Gemini (`gemini-4-hydrogen`) ranks vetted draft candidates. Grok (`grok-4.7`) is attempted only when Gemini is temporarily unavailable. The user reviews and explicitly accepts each draft. The models do not assign severity, provide evidence, or edit the record directly. Accepted suggestions retain their model provenance. The endpoint has per-process limits; use a single replica for those limits to be meaningful. Before enabling, confirm both providers are approved for the selected categories and verify account access in staging using synthetic inputs. Mocked tests require no secrets and do not call live providers.
+Anyone who can reach a public deployment can request suggestions. Each process permits up to six suggestion requests per minute, 60 per rolling day, and two requests in flight. One request may call both providers. The counters reset on restart and are not shared across replicas. Use one replica and set provider-side spending limits before exposing a public service. Verify both providers in staging with approved synthetic inputs. CI tests use mocks and do not need keys.

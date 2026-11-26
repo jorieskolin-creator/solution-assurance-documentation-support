@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import {
-  AI_ASSIST_ACCESS_TOKEN_PATTERN, AI_ASSIST_CONTEXT_OPTIONS, AI_ASSIST_MODELS, AI_FAILURE_MODE_DRAFTS,
+  AI_ASSIST_CONTEXT_OPTIONS, AI_ASSIST_MODELS, AI_FAILURE_MODE_DRAFTS,
   isAiAssistContext, type AcceptedAiFailureModeDraft, type AiAssistResult, type AiSuggestionId,
 } from '../lib/aiFailureModeAssist'
 import { requestAiFailureModeDrafts } from '../lib/aiFailureModeClient'
@@ -35,7 +35,6 @@ export function AiFailureModeAssist({ open, onOpenChange, onAccept }: AiFailureM
 
 function AssistForm({ onAccept, onClose }: { onAccept: AiFailureModeAssistProps['onAccept']; onClose: () => void }) {
   const [context, setContext] = useState({ capability: '', outputUse: '', humanReview: '' })
-  const [accessToken, setAccessToken] = useState('')
   const [consent, setConsent] = useState(false)
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -47,14 +46,13 @@ function AssistForm({ onAccept, onClose }: { onAccept: AiFailureModeAssistProps[
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (request.current || !consent || !isAiAssistContext(context) || !AI_ASSIST_ACCESS_TOKEN_PATTERN.test(accessToken)) return
+    if (request.current || !consent || !isAiAssistContext(context)) return
     const current = new AbortController()
     request.current = current
     setBusy(true)
     setFailed(false)
     setConsent(false)
-    setAccessToken('')
-    const reply = await requestAiFailureModeDrafts(context, accessToken, current.signal)
+    const reply = await requestAiFailureModeDrafts(context, current.signal)
     if (current.signal.aborted) return
     request.current = null
     setBusy(false)
@@ -109,22 +107,16 @@ function AssistForm({ onAccept, onClose }: { onAccept: AiFailureModeAssistProps[
             </select>
           </label>
         ))}
-        <label>
-          Workspace AI access token (not a provider key)
-          <input type="password" autoComplete="off" spellCheck={false} maxLength={128} required value={accessToken}
-            onChange={(event) => setAccessToken(event.target.value)} />
-        </label>
         <label className="check-label">
           <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
           <span>I agree to send these categories to the named providers for this request.</span>
         </label>
       </fieldset>
-      {failed && <p role="alert">No AI suggestions were returned. Check your access or continue manually.</p>}
+      {failed && <p role="alert">AI suggestions are unavailable right now. Try again later or continue manually.</p>}
       {busy && <p role="status">Requesting AI suggestions…</p>}
       <div className="dialog-actions">
         <Dialog.Close asChild><button type="button" className="button button-secondary">Cancel</button></Dialog.Close>
-        <button type="submit" className="button button-primary" disabled={busy || !consent || !isAiAssistContext(context)
-          || !AI_ASSIST_ACCESS_TOKEN_PATTERN.test(accessToken)}>Request suggestions</button>
+        <button type="submit" className="button button-primary" disabled={busy || !consent || !isAiAssistContext(context)}>Request suggestions</button>
       </div>
     </form>
   )

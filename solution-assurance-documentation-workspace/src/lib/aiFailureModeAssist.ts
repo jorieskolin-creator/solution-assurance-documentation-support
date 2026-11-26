@@ -1,6 +1,5 @@
 export const AI_ASSIST_STATUS_PATH = '/api/ai/status'
 export const AI_ASSIST_DRAFT_PATH = '/api/ai/failure-modes'
-export const AI_ASSIST_ACCESS_TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,128}$/
 
 export const AI_ASSIST_MODELS = {
   google: 'gemini-4-hydrogen',
